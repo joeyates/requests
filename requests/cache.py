@@ -276,7 +276,7 @@ class CacheableRequest(object):
         if vary:
             subtype = {}
             for name in vary.split(','):
-                name = name.strip()
+                name = name.lower().strip()
                 value = resp.headers[name]
                 if value is None:
                     return None
