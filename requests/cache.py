@@ -9,22 +9,70 @@ from .structures import CaseInsensitiveDict
 from requests import session
 
 class Storage(object):
+    """
+    A storage mantains a collection of records, a record is a cached response
+    associated with a url.
+
+    Every url can have one or more records associated, different records must
+    have different subtypes; a subtype can be None or a plain dictionary.
+
+    For what concerns the storage a subtype is just an opaque object used to
+    distinguish different versions of the cache; the subtypes are manipolated
+    by the Handlers.
+
+    To understand why this complexity is necessary read this:
+    http://www.w3.org/Protocols/rfc2616/rfc2616-sec13.html#sec13.6
+    """
     def new_record(self, url, subtype, headers):
+        """
+        Prepares the storage to accept a new record; the returned object has
+        two methods:
+
+         - write(chunk)
+         - close()
+
+        Use the write method to append chunks of data to the new record, use
+        the close method when you have finished.
+
+        If you don't call the close method the record will not be saved in the
+        storage.
+        """
         pass
 
-    def get_record_headers(self, url, subtype=None):
+    def get_record(self, url, subtype):
+        """
+        Returns the headers and the content of a record:
+
+            tuple(headers, content)
+        """
         pass
 
-    def get_record_content(self, url, subtype=None):
+    def get_record_headers(self, url, subtype):
+        """
+        Returns the headers of a record. This method exists for performance
+        reasons; depending on the storage type the headers and content could be
+        stored in different manners.
+        """
         pass
 
-    def get_record(self, url, subtype=None):
+    def get_record_content(self, url, subtype):
+        """
+        Returns the content of a record. This method exists for performance
+        reasons; depending on the storage type the headers and content could be
+        stored in different manners.
+        """
         pass
 
     def get_record_subtypes(self, url):
+        """
+        Returns all known subtypes of a record.
+        """
         pass
 
-    def purge_record(self, url, subtype=None):
+    def purge_record(self, url, subtype):
+        """
+        Remove an entry from the storage.
+        """
         pass
 
 class InMemory(object):
@@ -59,17 +107,17 @@ class InMemory(object):
                     return record
         return None
 
-    def get_record_headers(self, url, subtype=None):
+    def get_record_headers(self, url, subtype):
         record = self._get(url, subtype)
         if record:
             return record['headers']
 
-    def get_record_content(self, url, subtype=None):
+    def get_record_content(self, url, subtype):
         record = self._get(url, subtype)
         if record:
             return record['content']
 
-    def get_record(self, url, subtype=None):
+    def get_record(self, url, subtype):
         record = self._get(url, subtype)
         if record:
             return (record['headers'], record['content'])
@@ -80,7 +128,7 @@ class InMemory(object):
             return [ r['subtype'] for r in self.buffer[k]['records'] ]
         return None
 
-    def purge_record(self, url, subtype=None):
+    def purge_record(self, url, subtype):
         k = self._key(url)
         if k in self.buffer:
             for ix, record in enumerate(self.buffer[k]['records']):
