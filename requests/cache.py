@@ -263,13 +263,17 @@ class CacheableRequest(object):
         if 'expires' not in cached_headers:
             return
 
+        def diff(a, b):
+            t = a - b
+            return t.days * 86400 + t.seconds
+
         # first of all we need to know how much old is a cache entry
         # see: http://www.w3.org/Protocols/rfc2616/rfc2616-sec13.html#sec13.2.3
         date = httpfulldate2time(cached_headers['date'])
 
         apparent_age = max(
             0,
-            (cached_headers['_response_time'] - date).seconds)
+            diff(cached_headers['_response_time'], date))
 
         # the 'Age' header, if present, is added by an intermediate cache
         try:
@@ -280,20 +284,19 @@ class CacheableRequest(object):
         corrected_received_age = max(apparent_age, age_value)
 
         # delay imposed by the neetwork latency
-        response_delay = (cached_headers['_response_time'] - cached_headers['_request_time']).seconds
+        response_delay = diff(cached_headers['_response_time'], cached_headers['_request_time'])
 
         corrected_initial_age = corrected_received_age + response_delay
 
         # with resident_time we take in account the time spent in the cache
-        resident_time = (datetime.now() - cached_headers['_response_time']).seconds
+        resident_time = diff(datetime.now(), cached_headers['_response_time'])
 
         current_age = resident_time + corrected_initial_age
 
         # now we cache determine if the entry is still valid
         # see: http://www.w3.org/Protocols/rfc2616/rfc2616-sec13.html#sec13.2.4
         expires = httpfulldate2time(cached_headers['expires'])
-        freshness = expires - date
-        freshness_lifetime = freshness.days * 86400 + freshness.seconds
+        freshness_lifetime = diff(expires, date)
 
         if freshness_lifetime > current_age:
             return ('fetch', (req.full_url, subtype))
