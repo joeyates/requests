@@ -1,4 +1,5 @@
 # -*- coding: UTF-8 -*-
+import inspect
 import re
 from collections import defaultdict
 from cStringIO import StringIO
@@ -434,7 +435,10 @@ def response_hook(storage, resp):
             break
 
 def SessionCache(storage=InMemory, *args, **kwargs):
-    st = storage()
+    if inspect.isclass(storage):
+        st = storage()
+    else:
+        st = storage
     user_hooks = kwargs.get('hooks', {})
     def chain_pre_request(req):
         f = user_hooks.get('pre_request')
