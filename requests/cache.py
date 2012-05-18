@@ -1,4 +1,5 @@
 # -*- coding: UTF-8 -*-
+import re
 from collections import defaultdict
 from cStringIO import StringIO
 from datetime import datetime
@@ -244,6 +245,8 @@ class CacheableRequest(object):
         if not subtypes:
             return
 
+        # Search a cached entry compatible with the current request; if a valid
+        # entry is not found I exit in order to contact the remote server.
         fallback = subtypes.get(None)
         for subtype, cached_headers in subtypes.items():
             if subtype is None:
@@ -260,7 +263,22 @@ class CacheableRequest(object):
             else:
                 return
 
-        if 'expires' not in cached_headers:
+        # Cache-control max-age overrides the Expires header
+        max_age = None
+        expires = None
+        ccontrol = cached_headers['cache-control']
+        if ccontrol:
+            if 'no-cache' in ccontrol:
+                return
+            match = re.search(r'max-age\s*=\s*(\d+)', ccontrol)
+            if match:
+                max_age = int(match.group(1))
+
+        if max_age is None:
+            if 'expires' in cached_headers:
+                expires = httpfulldate2time(cached_headers['expires'])
+
+        if max_age is None and expires is None:
             return
 
         def diff(a, b):
@@ -295,8 +313,10 @@ class CacheableRequest(object):
 
         # now we cache determine if the entry is still valid
         # see: http://www.w3.org/Protocols/rfc2616/rfc2616-sec13.html#sec13.2.4
-        expires = httpfulldate2time(cached_headers['expires'])
-        freshness_lifetime = diff(expires, date)
+        if max_age:
+            freshness_lifetime = max_age
+        else:
+            freshness_lifetime = diff(expires, date)
 
         if freshness_lifetime > current_age:
             return ('fetch', (req.full_url, subtype))
