@@ -10,13 +10,13 @@ from requests import session
 
 class Storage(object):
     """
-    A storage mantains a collection of records, a record is a cached response
+    Storage mantains a collection of records, a record is a cached response
     associated with a url.
 
     Every url can have one or more records associated, different records must
     have different subtypes; a subtype can be None or a plain dictionary.
 
-    For what concerns the storage a subtype is just an opaque object used to
+    As far as Storage is concerned a subtype is just an opaque object used to
     distinguish different versions of the cache; the subtypes are manipolated
     by the Handlers.
 
@@ -41,7 +41,7 @@ class Storage(object):
 
     def get_record(self, url, subtype):
         """
-        Returns the headers and the content of a record:
+        Returns headers and content of a record:
 
             tuple(headers, content)
         """
@@ -50,7 +50,7 @@ class Storage(object):
     def get_record_headers(self, url, subtype):
         """
         Returns the headers of a record. This method exists for performance
-        reasons; depending on the storage type the headers and content could be
+        reasons; depending on the storage type headers and content could be
         stored in different manners.
         """
         pass
@@ -58,7 +58,7 @@ class Storage(object):
     def get_record_content(self, url, subtype):
         """
         Returns the content of a record. This method exists for performance
-        reasons; depending on the storage type the headers and content could be
+        reasons; depending on the storage type headers and content could be
         stored in different manners.
         """
         pass
