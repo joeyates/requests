@@ -117,12 +117,12 @@ class InMemory(object):
     def get_record_content(self, url, subtype):
         record = self._get(url, subtype)
         if record:
-            return record['content']
+            return StringIO(record['content'])
 
     def get_record(self, url, subtype):
         record = self._get(url, subtype)
         if record:
-            return (record['headers'], record['content'])
+            return (record['headers'], StringIO(record['content']))
 
     def get_record_subtypes(self, url):
         k = self._key(url)
@@ -138,6 +138,213 @@ class InMemory(object):
                     del self.buffer[k]['records'][ix]
                     return True
         return False
+
+import os
+import os.path
+import tempfile
+from itertools import izip_longest
+
+def grouper(n, iterable, fillvalue=None):
+    "grouper(3, 'ABCDEFG', 'x') --> ABC DEF Gxx"
+    args = [iter(iterable)] * n
+    return izip_longest(fillvalue=fillvalue, *args)
+
+import json
+
+ALL_RECORDS = object()
+
+class FSEntry(object):
+    def __init__(self, base_path, url):
+        self.base_path = base_path
+        self.url = url
+
+    def _full_path(self):
+        k = md5(self.url).hexdigest()
+        subdir = os.path.join(self.base_path, k[:2], k[:5])
+        return os.path.join(subdir, k)
+
+    def _content_path(self, rs):
+        return self._full_path() + ':' + md5(rs).hexdigest()
+
+    def _encode_subtype(self, subtype):
+        # the subtype entry is used to match records, I need a predictible output
+        if subtype is not None:
+            subtype = [ (x.lower(), y.lower()) for x, y in sorted(subtype.items()) ]
+        return json.dumps(subtype)
+
+    def _decode_subtype(self, line):
+        subtype = json.loads(line)
+        if subtype is not None:
+            subtype = CaseInsensitiveDict(subtype)
+        return subtype
+
+    def _encode_headers(self, headers):
+        headers = dict(headers)
+        headers['_response_time'] = headers['_response_time'].isoformat()
+        headers['_request_time'] = headers['_request_time'].isoformat()
+        return json.dumps(headers)
+
+    def _decode_headers(self, line):
+        headers = CaseInsensitiveDict(json.loads(line))
+        headers['_response_time'] = datetime.strptime(headers['_response_time'], '%Y-%m-%dT%H:%M:%S.%f')
+        headers['_request_time'] = datetime.strptime(headers['_request_time'], '%Y-%m-%dT%H:%M:%S.%f')
+        return headers
+
+    def _write_record(self, fh, subtype, headers, enabled=True):
+        rs = self._encode_subtype(subtype)
+        fh.write('%s\n' % (1 if enabled else 0,))
+        fh.write('%s\n' % rs)
+        fh.write('%s\n' % self._encode_headers(headers))
+        return rs
+
+    def _records(self, fh, subtype=ALL_RECORDS, only_enabled=True):
+        if subtype is not ALL_RECORDS:
+            subtype = self._encode_subtype(subtype)
+        while True:
+            pos = fh.tell()
+            lines = []
+            while len(lines) < 3:
+                line = fh.readline()
+                if line.startswith('#'):
+                    continue
+                if not line:
+                    break
+                lines.append(line)
+
+            if len(lines) < 3:
+                break
+
+            rb = bool(int(lines[0]))
+            rs = lines[1].strip()
+            if subtype is not ALL_RECORDS and rs != subtype:
+                continue
+
+            if only_enabled and not rb:
+                continue
+
+            yield {
+                'pos': pos,
+                'enabled': rb,
+                'subtype': rs,
+                'headers': self._decode_headers(lines[2]),
+            }
+
+    def open_index(self, mode='r'):
+        fpath = self._full_path()
+        if mode == 'w':
+            subdir = os.path.dirname(fpath)
+            try:
+                os.makedirs(subdir)
+            except OSError, e:
+                if e.errno != 17:
+                    # subdirs already exists
+                    raise
+        if mode == 'r':
+            f = file(fpath, 'rb')
+        else:
+            try:
+                f = file(fpath, 'r+b')
+            except IOError, e:
+                if e.errno != 2:
+                    raise
+                f = file(fpath, 'w+b')
+                f.write('# %s\n' % self.url)
+        return f
+
+    def _disable_record(self, fh, subtype):
+        counter = 0
+        for record in self._records(fh, subtype):
+            curr = fh.tell()
+            fh.seek(record['pos'])
+            fh.write('0')
+            fh.seek(curr)
+            counter += 1
+        return counter
+
+    def disable_record(self, subtype):
+        fh = self.open_index('w')
+        return self._disable_record(fh, subtype)
+
+    def get_record(self, subtype):
+        fh = self.open_index()
+        try:
+            record = iter(self._records(fh, subtype)).next()
+        except StopIteration:
+            return None
+        return {
+            'headers': record['headers'],
+            'content': self._content_path(record['subtype']),
+        }
+
+    def add_record(self, subtype, headers, content):
+        fh = self.open_index('w')
+        self._disable_record(fh, subtype)
+        rs = self._write_record(fh, subtype=subtype, headers=headers)
+
+        cfh = file(self._content_path(rs), 'w+b')
+        CHUNK = 16*1024
+        while True:
+            buff = content.read(CHUNK)
+            if not buff:
+                break
+            cfh.write(buff)
+
+    def records(self, subtype=ALL_RECORDS, only_enabled=True):
+        fh = self.open_index()
+        for r in self._records(fh, subtype=subtype, only_enabled=only_enabled):
+            yield {
+                'subtype': self._decode_subtype(r['subtype']),
+                'headers': r['headers'],
+            }
+
+class FSStorage(object):
+    """
+    """
+    def __init__(self, base_path):
+        self.base_path = base_path
+
+    def _put(self, url, subtype, headers, content):
+        entry = FSEntry(self.base_path, url)
+        entry.add_record(subtype, headers, content)
+
+    def new_record(self, url, subtype, headers):
+        f = tempfile.TemporaryFile()
+        class TSlot(object):
+            def write(self, chunk):
+                f.write(chunk)
+            def close(_):
+                f.seek(0)
+                self._put(url, subtype, headers, f)
+        return TSlot()
+
+    def get_record(self, url, subtype):
+        entry = FSEntry(self.base_path, url)
+        record = entry.get_record(subtype)
+        if record:
+            return record['headers'], file(record['content'])
+
+    def get_record_headers(self, url, subtype):
+        entry = FSEntry(self.base_path, url)
+        record = entry.get_record(subtype)
+        if record:
+            return record['headers']
+
+    def get_record_content(self, url, subtype):
+        entry = FSEntry(self.base_path, url)
+        record = entry.get_record(subtype)
+        if record:
+            return file(record['content'])
+
+    def get_record_subtypes(self, url):
+        entry = FSEntry(self.base_path, url)
+        try:
+            return [ x['subtype'] for x in entry.records() ]
+        except IOError:
+            return []
+
+    def purge_record(self, url, subtype):
+        entry = FSEntry(self.base_path, url)
+        entry.disable_record(subtype)
 
 def time2httpfulldate(dt):
     """
@@ -374,7 +581,7 @@ def _build_response_from_storage(storage, req, url, subtype):
     resp.config = req.config
     resp.status_code = 200
     resp.headers = headers
-    resp.raw = StringIO(content)
+    resp.raw = content
     req.response = resp
     req.sent = True
     return resp
@@ -431,7 +638,8 @@ def response_hook(storage, resp):
                 print 'fetch the response from the storage'
                 headers, content = storage.get_record(url, subtype)
                 resp.headers = headers
-                resp.raw = StringIO(content)
+                resp.raw = content
+                resp.from_cache = True
             break
 
 def SessionCache(storage=InMemory, *args, **kwargs):
