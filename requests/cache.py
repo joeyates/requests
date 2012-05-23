@@ -532,7 +532,7 @@ class CacheableRequest(object):
             return ('purge', (req.full_url, subtype))
 
     def handle_response(self, resp):
-        if resp.request.method not in ('GET', 'HEAD') or resp.status_code >= 300:
+        if resp.request.method not in ('GET', 'HEAD') or resp.status_code >= 500:
             return None
 
         if 'expires' not in resp.headers:
