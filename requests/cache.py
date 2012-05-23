@@ -588,7 +588,7 @@ def _build_response_from_storage(storage, req, url, subtype):
     resp = Response()
     resp.from_cache = True
     resp.config = req.config
-    resp.status_code = 200
+    resp.status_code = int(headers['_status_code'] or 200)
     resp.headers = headers
     resp.raw = content
     resp.url = req.full_url
@@ -645,6 +645,7 @@ def response_hook(storage, resp):
                 headers = CaseInsensitiveDict(resp.headers)
                 headers['_request_time'] = resp.request._request_time
                 headers['_response_time'] = datetime.now()
+                headers['_status_code'] = resp.status_code
                 record = storage.new_record(url, subtype, headers)
                 resp.raw = Tee(resp, record)
             elif cmd == 'fetch':
