@@ -591,6 +591,7 @@ def _build_response_from_storage(storage, req, url, subtype):
     resp.status_code = 200
     resp.headers = headers
     resp.raw = content
+    resp.url = req.full_url
     req.response = resp
     req.sent = True
     return resp
