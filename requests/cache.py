@@ -610,7 +610,7 @@ def pre_send_hook(storage, req):
         if res is None:
             continue
         else:
-            print h , 'can handle the request'
+            print h , 'can handle the request for', req.full_url
             if res[0] == 'request':
                 print 'new request'
                 req = res[1]
@@ -629,13 +629,15 @@ def response_hook(storage, resp):
     if not date or not httpfulldate2time(date):
         return None
 
+    if getattr(resp, 'from_cache', None):
+        return None
+
     for h in HANDLERS:
         res = h.handle_response(resp)
-        print 'x', h, res
         if res is None:
             continue
         else:
-            print h, 'can handle the response'
+            print h, 'can handle the response for', resp.url
             cmd, key = res
             url, subtype = key
             if cmd == 'store':
