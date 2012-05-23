@@ -449,6 +449,8 @@ class EtagValidator(object):
             return ('store', (resp.url, None))
 
 class CacheableRequest(object):
+    rmax_age = re.compile(r'max-age\s*=\s*(\d+)')
+
     def handle_request(self, req, subtypes):
         if not subtypes:
             return
@@ -535,7 +537,11 @@ class CacheableRequest(object):
         if resp.request.method not in ('GET', 'HEAD') or resp.status_code >= 500:
             return None
 
-        if 'expires' not in resp.headers:
+        ccontrol = resp.headers['cache-control'] or ''
+        if 'no-cache' in ccontrol:
+            return None
+
+        if not(self.rmax_age.search(ccontrol) or 'expires' in resp.headers):
             return None
 
         # from: http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.44
@@ -563,11 +569,11 @@ class CacheableRequest(object):
         else:
             subtype = None
 
-        expires = httpfulldate2time(resp.headers['expires'])
-        if expires > datetime.now():
-            return ('store', (resp.url, subtype))
-
-        return None
+        if 'expires' in resp.headers:
+            expires = httpfulldate2time(resp.headers['expires'])
+            if expires <= datetime.now():
+                return None
+        return ('store', (resp.url, subtype))
 
 HANDLERS = (
     CacheableRequest(),
@@ -621,6 +627,7 @@ def response_hook(storage, resp):
 
     for h in HANDLERS:
         res = h.handle_response(resp)
+        print 'x', h, res
         if res is None:
             continue
         else:
