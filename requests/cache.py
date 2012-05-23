@@ -206,6 +206,9 @@ class FSEntry(object):
             while len(lines) < 3:
                 line = fh.readline()
                 if line.startswith('#'):
+                    # if the first line is a comment the record starts now
+                    if not lines:
+                        pos = fh.tell()
                     continue
                 if not line:
                     break
