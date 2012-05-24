@@ -619,12 +619,13 @@ def pre_send_hook(storage, req):
         if res is None:
             continue
         else:
-            print h , 'can handle the request for', req.full_url
+            # h can handle this request
             if res[0] == 'request':
-                print 'new request'
+                # res[1] is the request that will replace the original
                 req = res[1]
             elif res[0] == 'fetch':
-                print 'fetch the response from the storage'
+                # I don't need the network; a response can be retrieved from
+                # the storage
                 _build_response_from_storage(storage, req, res[1][0], res[1][1])
             else:
                 storage.purge(res[1][0], res[1][1])
@@ -646,11 +647,11 @@ def response_hook(storage, resp):
         if res is None:
             continue
         else:
-            print h, 'can handle the response for', resp.url
+            # h can handle this response
             cmd, key = res
             url, subtype = key
             if cmd == 'store':
-                print 'store the response in the storage', subtype
+                # store the response in the storage
                 headers = CaseInsensitiveDict(resp.headers)
                 headers['_request_time'] = resp.request._request_time
                 headers['_response_time'] = datetime.now()
@@ -658,7 +659,7 @@ def response_hook(storage, resp):
                 record = storage.new_record(url, subtype, headers)
                 resp.raw = Tee(resp, record)
             elif cmd == 'fetch':
-                print 'fetch the response from the storage'
+                # the response must be replaced with the one in the storage
                 headers, content = storage.get_record(url, subtype)
                 resp.headers = headers
                 resp.raw = content
