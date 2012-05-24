@@ -605,7 +605,16 @@ def pre_send_hook(storage, req):
     else:
         subtypes = None
 
+    skip = req.config.get('skip_cache_handlers')
+    if skip:
+        try:
+            iter(skip)
+        except TypeError:
+            skip = (skip,)
+
     for h in HANDLERS:
+        if skip and (h in skip or type(h) in skip):
+            continue
         res = h.handle_request(req, subtypes)
         if res is None:
             continue
