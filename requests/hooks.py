@@ -23,12 +23,19 @@ Available hooks:
 ``response``:
     The response generated from a Request.
 
+``raw_pre_send``:
+    The Request object, directly before being sent. Unlike ``pre_send`` this
+    hook is always called, even when following a redirect.
+
+``raw_response``:
+    The response generated from a Request.  Unlike ``response`` this hook is
+    always called, even when following a redirect.
 """
 
 import traceback
 
 
-HOOKS = ('args', 'pre_request', 'pre_send', 'post_request', 'response')
+HOOKS = ('args', 'pre_request', 'pre_send', 'post_request', 'response', 'raw_pre_send', 'raw_response')
 
 
 def dispatch_hook(key, hooks, hook_data):

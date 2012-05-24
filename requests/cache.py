@@ -663,19 +663,19 @@ def SessionCache(storage=InMemory, *args, **kwargs):
         st = storage
     user_hooks = kwargs.get('hooks', {})
     def chain_pre_request(req):
-        f = user_hooks.get('pre_request')
+        f = user_hooks.get('raw_pre_send')
         if f:
             req = f(req)
         return pre_send_hook(st, req)
 
     def chain_response(resp):
-        f = user_hooks.get('response')
+        f = user_hooks.get('raw_response')
         if f:
             f(resp)
         return response_hook(st, resp)
 
     hooks = {
-        'pre_request': chain_pre_request,
-        'response': chain_response,
+        'raw_pre_send': chain_pre_request,
+        'raw_response': chain_response,
     }
     return session(hooks=hooks, *args, **kwargs)

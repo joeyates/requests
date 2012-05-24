@@ -147,7 +147,10 @@ class Request(object):
         hooks = hooks or {}
 
         for (k, v) in list(hooks.items()):
-            self.register_hook(event=k, hook=v)
+            if hasattr(v, '__call__'):
+                v = [ v ]
+            for h in v:
+                self.register_hook(event=k, hook=h)
 
         #: Session.
         self.session = session
@@ -226,8 +229,10 @@ class Request(object):
         history = []
 
         r = build(resp)
+        r.request = self
+        r = dispatch_hook('raw_response', self.hooks, r)
 
-        if r.status_code in REDIRECT_STATI and not self.redirect:
+        if r.status_code in REDIRECT_STATI and not self.redirect and not getattr(r, 'from_cache', None):
 
             while (('location' in r.headers) and
                    ((r.status_code is codes.see_other) or (self.allow_redirects))):
@@ -287,6 +292,11 @@ class Request(object):
                 except KeyError:
                     pass
 
+                # Only the raw_* hooks must be called when following a redirect.
+                rhooks = {}
+                rhooks['raw_pre_send'] = self.hooks['raw_pre_send']
+                rhooks['raw_response'] = self.hooks['raw_response']
+
                 request = Request(
                     url=url,
                     headers=headers,
@@ -303,7 +313,8 @@ class Request(object):
                     proxies=self.proxies,
                     verify=self.verify,
                     session=self.session,
-                    cert=self.cert
+                    cert=self.cert,
+                    hooks=rhooks,
                 )
 
                 request.send()
@@ -576,6 +587,9 @@ class Request(object):
                 conn.key_file = self.cert[1]
             else:
                 conn.cert_file = self.cert
+
+        r = dispatch_hook('raw_pre_send', self.hooks, self)
+        self.__dict__.update(r.__dict__)
 
         if not self.sent or anyway:
 
