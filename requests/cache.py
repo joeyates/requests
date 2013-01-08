@@ -628,7 +628,7 @@ def pre_send_hook(storage, req):
                 # the storage
                 _build_response_from_storage(storage, req, res[1][0], res[1][1])
             else:
-                storage.purge(res[1][0], res[1][1])
+                storage.purge_record(res[1][0], res[1][1])
             break
     req._request_time = datetime.now()
     return req
